@@ -1,17 +1,20 @@
+# nsl_kdd.py
+# ML Classification on NSL-KDD Dataset
+
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
 
-# Load dataset
+# -----------------------------
+# 1. COLUMN NAMES
+# -----------------------------
 columns = [
     'duration','protocol_type','service','flag','src_bytes','dst_bytes',
     'land','wrong_fragment','urgent','hot','num_failed_logins','logged_in',
@@ -27,58 +30,88 @@ columns = [
     'dst_host_srv_rerror_rate','label','difficulty'
 ]
 
-data = pd.read_csv("KDDTrain+.txt", names=columns)
-print("Dataset Loaded Successfully")
-print(data.head())
+# -----------------------------
+# 2. LOAD DATASET
+# -----------------------------
+train_df = pd.read_csv("KDDTrain+.txt", names=columns)
+test_df = pd.read_csv("KDDTest+.txt", names=columns)
 
-# Encode categorical columns
+print("Datasets Loaded Successfully")
+
+# -----------------------------
+# 3. ENCODE CATEGORICAL DATA
+# -----------------------------
 encoder = LabelEncoder()
-for col in data.select_dtypes(include=['object']).columns:
-    data[col] = encoder.fit_transform(data[col])
+for col in ['protocol_type', 'service', 'flag']:
+    train_df[col] = encoder.fit_transform(train_df[col])
+    test_df[col] = encoder.transform(test_df[col])
 
-# Split data
-X = data.drop(['label','difficulty'], axis=1)
-y = data['label']
+# Binary Classification
+train_df['label'] = train_df['label'].apply(lambda x: 0 if x == 'normal' else 1)
+test_df['label'] = test_df['label'].apply(lambda x: 0 if x == 'normal' else 1)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=42
-)
+# -----------------------------
+# 4. SPLIT FEATURES & LABEL
+# -----------------------------
+X_train = train_df.drop(['label', 'difficulty'], axis=1)
+y_train = train_df['label']
 
-# Feature scaling
+X_test = test_df.drop(['label', 'difficulty'], axis=1)
+y_test = test_df['label']
+
+# -----------------------------
+# 5. FEATURE SCALING
+# -----------------------------
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
 
-# Models
-lr = LogisticRegression(max_iter=2000)
-svm = SVC(kernel='linear')
-dt = DecisionTreeClassifier(random_state=42)
-rf = RandomForestClassifier(n_estimators=50, random_state=42)
+# -----------------------------
+# 6. MODELS
+# -----------------------------
+models = {
+    "Logistic_Regression": LogisticRegression(max_iter=2000),
+    "SVM": SVC(kernel='rbf'),
+    "Random_Forest": RandomForestClassifier(n_estimators=100),
+    "AdaBoost": AdaBoostClassifier(n_estimators=100)
+}
 
-# Train & evaluate
-lr.fit(X_train, y_train)
-svm.fit(X_train, y_train)
-dt.fit(X_train, y_train)
-rf.fit(X_train, y_train)
+accuracies = {}
 
-print("\nAccuracy Results:")
-print("Logistic Regression:", accuracy_score(y_test, lr.predict(X_test)))
-print("SVM:", accuracy_score(y_test, svm.predict(X_test)))
-print("Decision Tree:", accuracy_score(y_test, dt.predict(X_test)))
-print("Random Forest:", accuracy_score(y_test, rf.predict(X_test)))
+# -----------------------------
+# 7. TRAIN, EVALUATE & SAVE CONFUSION MATRIX
+# -----------------------------
+for name, model in models.items():
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
 
-# Graph
-algorithms = ['Logistic Regression', 'SVM', 'Decision Tree', 'Random Forest']
-accuracies = [
-    accuracy_score(y_test, lr.predict(X_test)),
-    accuracy_score(y_test, svm.predict(X_test)),
-    accuracy_score(y_test, dt.predict(X_test)),
-    accuracy_score(y_test, rf.predict(X_test))
-]
+    acc = accuracy_score(y_test, y_pred)
+    accuracies[name] = acc
 
-plt.bar(algorithms, accuracies)
-plt.xlabel("Algorithms")
+    print(f"{name} Accuracy: {acc:.4f}")
+
+    cm = confusion_matrix(y_test, y_pred)
+
+    plt.figure(figsize=(5,4))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=['Normal','Attack'],
+                yticklabels=['Normal','Attack'])
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title(f"Confusion Matrix - {name}")
+    plt.tight_layout()
+    plt.savefig(f"confusion_matrix_{name}.png")
+    plt.close()
+
+# -----------------------------
+# 8. ACCURACY COMPARISON GRAPH
+# -----------------------------
+plt.figure(figsize=(8,5))
+plt.bar(accuracies.keys(), accuracies.values())
 plt.ylabel("Accuracy")
-plt.title("NSL-KDD Dataset ML Comparison")
-plt.ylim(0,1)
+plt.xlabel("Algorithms")
+plt.title("ML Algorithm Performance Comparison (NSL-KDD)")
+plt.ylim(0.9, 1.0)
+plt.tight_layout()
+plt.savefig("algorithm_accuracy_comparison.png")
 plt.show()
